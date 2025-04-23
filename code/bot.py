@@ -63,7 +63,7 @@ async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     context.user_data["temp_number"] = number
     await update.message.reply_text("Now enter student name:")
-    return WAATING_FOR_NAME
+    return WAITING_FOR_NAME
 
 
 async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
