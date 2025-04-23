@@ -1,6 +1,7 @@
-from dotenv import dotenv_values
+import os
+import asyncio  # Import asyncio for proper async execution if needed later
+from dotenv import load_dotenv, dotenv_values
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -9,8 +10,23 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-import json
-from pathlib import Path
+
+# Import the Database class from your new file
+from database import Database
+
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get the bot token from environment variables
+BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# Ensure token is loaded
+if not BOT_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN not found in environment variables.")
+
+
+# --- Bot Handlers ---
 
 # States for conversations
 (
@@ -21,28 +37,6 @@ from pathlib import Path
 ) = range(4)
 
 
-# Load config directly
-config = dotenv_values(".env")
-BOT_TOKEN = config.get("TELEGRAM_TOKEN")
-
-
-# Simple storage functions
-def load_students(user_id: int) -> dict:
-    file_path = Path(f"data/{user_id}_students.json")
-    if file_path.exists():
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def save_students(user_id: int, students: dict) -> None:
-    file_path = Path(f"data/{user_id}_students.json")
-    file_path.parent.mkdir(exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(students, f, ensure_ascii=False, indent=2)
-
-
-# Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "Welcome to Student Manager Bot!\n\n"
@@ -50,8 +44,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/add - Add new student\n"
         "/list - Show all students\n"
         "/find - Find student by number or name\n"
-        "/edit - Edit student information\n"
-        "/delete - Delete student\n"
+        "/edit - Edit student information (TODO)\n"
+        "/delete - Delete student (TODO)\n"
         "/cancel - Cancel current operation"
     )
 
@@ -69,16 +63,16 @@ async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     context.user_data["temp_number"] = number
     await update.message.reply_text("Now enter student name:")
-    return WAITING_FOR_NAME
+    return WAATING_FOR_NAME
 
 
 async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = update.message.text
     number = context.user_data.pop("temp_number")
 
-    students = load_students(update.effective_user.id)
-    students[number] = name
-    save_students(update.effective_user.id, students)
+    # Access the database instance from bot_data
+    db = context.bot_data["db"]
+    db.add_student(update.effective_user.id, number, name)
 
     await update.message.reply_text(
         f"Student added successfully!\nNumber: {number}\nName: {name}"
@@ -87,14 +81,19 @@ async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 
 async def list_students(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    students = load_students(update.effective_user.id)
+    # Access the database instance from bot_data
+    db = context.bot_data["db"]
+    students = db.get_students(update.effective_user.id)
+
     if not students:
         await update.message.reply_text("No students in the database.")
         return
 
     message = "Students list:\n\n"
-    for number, name in students.items():
-        message += f"Number: {number}\nName: {name}\n\n"
+    for student in students:
+        message += (
+            f"Number: {student['student_number']}\nName: {student['student_name']}\n\n"
+        )
     await update.message.reply_text(message)
 
 
@@ -107,21 +106,24 @@ async def find_student(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    students = load_students(update.effective_user.id)
-    results = []
-
-    # Search by number (exact match) or name (case-insensitive partial match)
-    for number, name in students.items():
-        if query == number or query.lower() in name.lower():
-            results.append(f"Number: {number}\nName: {name}")
+    # Access the database instance from bot_data
+    db = context.bot_data["db"]
+    results = db.find_students(update.effective_user.id, query)
 
     if results:
-        await update.message.reply_text("Found matches:\n\n" + "\n\n".join(results))
+        message = "Found matches:\n\n"
+        for student in results:
+            message += f"Number: {student['student_number']}\nName: {student['student_name']}\n\n"
+        await update.message.reply_text(message)
     else:
         await update.message.reply_text("No matching students found.")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Clear any temporary data stored in user_data for this conversation
+    if "temp_number" in context.user_data:
+        del context.user_data["temp_number"]
+    # Add logic to clear other potential temp data here if needed
     await update.message.reply_text("Operation cancelled.")
     return ConversationHandler.END
 
@@ -130,10 +132,19 @@ async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Hello {update.effective_user.first_name}")
 
 
+# --- Main Function ---
 def main():
+    # Initialize the database instance
+    # Ensure load_dotenv() is called *before* this line
+    db = Database()
+
+    # Build the Application
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Add conversation handler
+    # Store the database instance in bot_data to access it in handlers
+    app.bot_data["db"] = db
+
+    # Add conversation handler for adding students
     add_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("add", add_start)],
         states={
@@ -147,17 +158,27 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    # Add handlers
+    # Add other handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(add_conv_handler)
     app.add_handler(CommandHandler("list", list_students))
     app.add_handler(CommandHandler("find", find_student))
     app.add_handler(CommandHandler("hello", hello))
 
-    # Start the bot
+    # Start the bot (using polling)
     print("Bot is running...")
     app.run_polling()
 
+    # Optional: Close the database connection when the bot stops
+    db.close()
+
 
 if __name__ == "__main__":
+    # Ensure load_dotenv is called here if you chose not to call it in database.py
+    load_dotenv()
+
+    # try:
+    #     asyncio.run(main())
+    # except KeyboardInterrupt: # Handle Ctrl+C gracefully
+    #     print("Bot stopped manually.")
     main()
