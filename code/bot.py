@@ -32,6 +32,10 @@ if not BOT_TOKEN:
     raise ValueError("TELEGRAM_TOKEN not found in environment variables.")
 
 
+# --- Constants ---
+DEFAULT_SORT_ORDER = "student_number"
+
+
 # --- Bot Handlers ---
 
 # States for conversations
@@ -146,6 +150,57 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Hello {update.effective_user.first_name}")
+
+
+# Helper function to escape MarkdownV2 characters
+def escape_markdown(text: str) -> str:
+    """Helper function to escape telegram MarkdownV2 characters."""
+    escape_chars = r"_*[]()~`>#+-=|{}.!"
+    return "".join(f"\\{char}" if char in escape_chars else char for char in str(text))
+
+
+# Helper function to format the student list and create keyboard
+def format_student_list(
+    students: list, sort_order: str
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Formats the student list as a Markdown table and creates sorting buttons."""
+    if not students:
+        return "No students in the database.", None
+
+    # --- Create Table Header ---
+    # Using fixed-width approach with monospace font
+    header = f"`{'#':<4}{'ID':<15}{'Name':<20}`\n"  # Adjust widths as needed
+    separator = f"`{'-' * 4}{'-' * 15}{'-' * 20}`\n"  # Separator line
+
+    # --- Create Table Rows ---
+    rows = []
+    for i, student in enumerate(students, 1):
+        num_str = escape_markdown(str(i))
+        id_str = escape_markdown(student["student_number"])
+        name_str = escape_markdown(student["student_name"])
+        # Truncate long names/IDs if necessary
+        rows.append(f"`{num_str:<4}{id_str:<15}{name_str:<20}`")
+
+    message_text = f"*Students List* \(Sorted by {sort_order.replace('_', ' ')}\)\n\n"
+    message_text += header + separator + "\n".join(rows)
+
+    # --- Create Inline Keyboard for Sorting ---
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"Sort by ID {'✅' if sort_order == 'student_number' else ''}",
+                callback_data="list_sort_student_number",
+            ),
+            InlineKeyboardButton(
+                f"Sort by Name {'✅' if sort_order == 'student_name' else ''}",
+                callback_data="list_sort_student_name",
+            ),
+        ],
+        # Add pagination buttons here later if needed
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    return message_text, reply_markup
 
 
 # --- Main Function ---
