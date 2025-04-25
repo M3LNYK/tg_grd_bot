@@ -67,18 +67,20 @@ class Database:
             cur.execute(query, (user_id,))
             return cur.fetchall()
 
-    def find_students(self, user_id: int, query: str):
-        """Finds students by number (exact) or name (partial, case-insensitive)."""
+    def find_students(self, user_id: int, query: str, order_by: str = "student_number"):
+        """Finds students by number or name, ordered as specified."""
+        allowed_orders = {"student_number", "student_name"}
+        if order_by not in allowed_orders:
+            order_by = "student_number"
+
+        sql_query = f"""
+            SELECT student_number, student_name FROM students
+            WHERE user_id = %s
+            AND (student_number = %s OR LOWER(student_name) LIKE %s)
+            ORDER BY {order_by};
+        """
         with self.conn.cursor(cursor_factory=DictCursor) as cur:
-            cur.execute(
-                """
-                SELECT student_number, student_name FROM students
-                WHERE user_id = %s
-                AND (student_number = %s OR LOWER(student_name) LIKE %s)
-                ORDER BY student_number;
-                """,
-                (user_id, query, f"%{query.lower()}%"),
-            )
+            cur.execute(sql_query, (user_id, query, f"%{query.lower()}%"))
             return cur.fetchall()
 
     # TODO: Add methods for edit and delete later
