@@ -1,7 +1,12 @@
 import os
 import asyncio  # Import asyncio for proper async execution if needed later
 from dotenv import load_dotenv, dotenv_values
-from telegram import Update
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)  # Add button imports
+from telegram.constants import ParseMode  # Import ParseMode for formatting
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -9,6 +14,7 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     filters,
+    CallbackQueryHandler,
 )
 
 # Import the Database class from your new file
@@ -26,6 +32,10 @@ if not BOT_TOKEN:
     raise ValueError("TELEGRAM_TOKEN not found in environment variables.")
 
 
+# --- Constants ---
+DEFAULT_SORT_ORDER = "student_number"
+
+
 # --- Bot Handlers ---
 
 # States for conversations
@@ -38,15 +48,25 @@ if not BOT_TOKEN:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sends a welcome message when the /start command is issued."""
     await update.message.reply_text(
-        "Welcome to Student Manager Bot!\n\n"
+        f"Welcome {update.effective_user.first_name}!\n\n"
+        "I can help you manage student IDs.\n"
+        "Type /help to see the list of available commands."
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sends explanation on how to use the bot."""
+    await update.message.reply_text(
         "Available commands:\n"
-        "/add - Add new student\n"
+        "/add - Add new student (Number then Name)\n"
         "/list - Show all students\n"
-        "/find - Find student by number or name\n"
-        "/edit - Edit student information (TODO)\n"
-        "/delete - Delete student (TODO)\n"
-        "/cancel - Cancel current operation"
+        "/find <query> - Find student by number or name\n"
+        # "/edit - Edit student information (TODO)\n" # Keep TODOs commented out for help
+        # "/delete - Delete student (TODO)\n"
+        "/cancel - Cancel current operation (like adding)\n"
+        "/help - Show this help message"
     )
 
 
@@ -81,20 +101,22 @@ async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 
 async def list_students(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Access the database instance from bot_data
+    """Lists students with sorting options."""
     db = context.bot_data["db"]
-    students = db.get_students(update.effective_user.id)
+    user_id = update.effective_user.id
 
-    if not students:
-        await update.message.reply_text("No students in the database.")
-        return
+    # Get current sort order from user_data, default if not set
+    sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
 
-    message = "Students list:\n\n"
-    for student in students:
-        message += (
-            f"Number: {student['student_number']}\nName: {student['student_name']}\n\n"
-        )
-    await update.message.reply_text(message)
+    students = db.get_students(user_id, order_by=sort_order)
+
+    message_text, reply_markup = format_student_list(students, sort_order)
+
+    await update.message.reply_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN_V2,  # Use MarkdownV2 for formatting
+    )
 
 
 async def find_student(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -119,6 +141,47 @@ async def find_student(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("No matching students found.")
 
 
+async def list_button_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handles button presses for the student list (sorting)."""
+    query = update.callback_query
+    await query.answer()  # Answer the callback query first
+
+    callback_data = query.data
+    user_id = query.from_user.id
+    db = context.bot_data["db"]
+
+    new_sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
+
+    # Determine new sort order based on button pressed
+    if callback_data == "list_sort_student_number":
+        new_sort_order = "student_number"
+    elif callback_data == "list_sort_student_name":
+        new_sort_order = "student_name"
+
+    # Store the new sort order
+    context.user_data["list_sort_order"] = new_sort_order
+
+    # Fetch sorted students
+    students = db.get_students(user_id, order_by=new_sort_order)
+
+    # Format the message and keyboard again
+    message_text, reply_markup = format_student_list(students, new_sort_order)
+
+    # Edit the original message
+    try:
+        await query.edit_message_text(
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+    except Exception as e:
+        # Handle potential error if the message content hasn't changed
+        # or if there's another issue editing the message.
+        print(f"Error editing message: {e}")
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Clear any temporary data stored in user_data for this conversation
     if "temp_number" in context.user_data:
@@ -130,6 +193,57 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Hello {update.effective_user.first_name}")
+
+
+# Helper function to escape MarkdownV2 characters
+def escape_markdown(text: str) -> str:
+    """Helper function to escape telegram MarkdownV2 characters."""
+    escape_chars = r"_*[]()~`>#+-=|{}.!"
+    return "".join(f"\\{char}" if char in escape_chars else char for char in str(text))
+
+
+# Helper function to format the student list and create keyboard
+def format_student_list(
+    students: list, sort_order: str
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Formats the student list as a Markdown table and creates sorting buttons."""
+    if not students:
+        return "No students in the database.", None
+
+    # --- Create Table Header ---
+    # Using fixed-width approach with monospace font
+    header = f"`{'#':<4}{'ID':<15}{'Name':<20}`\n"  # Adjust widths as needed
+    separator = f"`{'-' * 4}{'-' * 15}{'-' * 20}`\n"  # Separator line
+
+    # --- Create Table Rows ---
+    rows = []
+    for i, student in enumerate(students, 1):
+        num_str = escape_markdown(str(i))
+        id_str = escape_markdown(student["student_number"])
+        name_str = escape_markdown(student["student_name"])
+        # Truncate long names/IDs if necessary
+        rows.append(f"`{num_str:<4}{id_str:<15}{name_str:<20}`")
+
+    message_text = f"*Students List* \(Sorted by {sort_order.replace('_', ' ')}\)\n\n"
+    message_text += header + separator + "\n".join(rows)
+
+    # --- Create Inline Keyboard for Sorting ---
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"Sort by ID {'✅' if sort_order == 'student_number' else ''}",
+                callback_data="list_sort_student_number",
+            ),
+            InlineKeyboardButton(
+                f"Sort by Name {'✅' if sort_order == 'student_name' else ''}",
+                callback_data="list_sort_student_name",
+            ),
+        ],
+        # Add pagination buttons here later if needed
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    return message_text, reply_markup
 
 
 # --- Main Function ---
@@ -158,12 +272,15 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    # Add other handlers
+    # Handlers
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(add_conv_handler)
     app.add_handler(CommandHandler("list", list_students))
     app.add_handler(CommandHandler("find", find_student))
     app.add_handler(CommandHandler("hello", hello))
+
+    app.add_handler(CallbackQueryHandler(list_button_callback, pattern="^list_sort_"))
 
     # Start the bot (using polling)
     print("Bot is running...")
