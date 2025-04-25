@@ -101,20 +101,22 @@ async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 
 async def list_students(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Access the database instance from bot_data
+    """Lists students with sorting options."""
     db = context.bot_data["db"]
-    students = db.get_students(update.effective_user.id)
+    user_id = update.effective_user.id
 
-    if not students:
-        await update.message.reply_text("No students in the database.")
-        return
+    # Get current sort order from user_data, default if not set
+    sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
 
-    message = "Students list:\n\n"
-    for student in students:
-        message += (
-            f"Number: {student['student_number']}\nName: {student['student_name']}\n\n"
-        )
-    await update.message.reply_text(message)
+    students = db.get_students(user_id, order_by=sort_order)
+
+    message_text, reply_markup = format_student_list(students, sort_order)
+
+    await update.message.reply_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN_V2,  # Use MarkdownV2 for formatting
+    )
 
 
 async def find_student(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
