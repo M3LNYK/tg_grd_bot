@@ -141,6 +141,47 @@ async def find_student(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("No matching students found.")
 
 
+async def list_button_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handles button presses for the student list (sorting)."""
+    query = update.callback_query
+    await query.answer()  # Answer the callback query first
+
+    callback_data = query.data
+    user_id = query.from_user.id
+    db = context.bot_data["db"]
+
+    new_sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
+
+    # Determine new sort order based on button pressed
+    if callback_data == "list_sort_student_number":
+        new_sort_order = "student_number"
+    elif callback_data == "list_sort_student_name":
+        new_sort_order = "student_name"
+
+    # Store the new sort order
+    context.user_data["list_sort_order"] = new_sort_order
+
+    # Fetch sorted students
+    students = db.get_students(user_id, order_by=new_sort_order)
+
+    # Format the message and keyboard again
+    message_text, reply_markup = format_student_list(students, new_sort_order)
+
+    # Edit the original message
+    try:
+        await query.edit_message_text(
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+    except Exception as e:
+        # Handle potential error if the message content hasn't changed
+        # or if there's another issue editing the message.
+        print(f"Error editing message: {e}")
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Clear any temporary data stored in user_data for this conversation
     if "temp_number" in context.user_data:
