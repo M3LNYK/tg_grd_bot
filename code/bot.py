@@ -1,7 +1,12 @@
 import os
 import asyncio  # Import asyncio for proper async execution if needed later
 from dotenv import load_dotenv, dotenv_values
-from telegram import Update
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)  # Add button imports
+from telegram.constants import ParseMode  # Import ParseMode for formatting
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -9,6 +14,7 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     filters,
+    CallbackQueryHandler,
 )
 
 # Import the Database class from your new file
