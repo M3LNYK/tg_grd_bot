@@ -49,14 +49,23 @@ class Database:
             )
         self.conn.commit()
 
-    def get_students(self, user_id: int):
-        """Retrieves all students for a given user."""
+    def get_students(self, user_id: int, order_by: str = "student_number"):
+        """Retrieves all students for a given user, ordered as specified."""
+        # Validate order_by to prevent SQL injection (allow only specific columns)
+        allowed_orders = {"student_number", "student_name"}
+        if order_by not in allowed_orders:
+            order_by = "student_number"  # Default to a safe value
+
+        # Use f-string carefully here because we validated order_by against a fixed set
+        query = f"""
+            SELECT student_number, student_name
+            FROM students
+            WHERE user_id = %s
+            ORDER BY {order_by}
+        """
         with self.conn.cursor(cursor_factory=DictCursor) as cur:
-            cur.execute(
-                "SELECT student_number, student_name FROM students WHERE user_id = %s ORDER BY student_number",
-                (user_id,),
-            )
-            return cur.fetchall()  # Returns a list of dictionaries
+            cur.execute(query, (user_id,))
+            return cur.fetchall()
 
     def find_students(self, user_id: int, query: str):
         """Finds students by number (exact) or name (partial, case-insensitive)."""
