@@ -38,15 +38,21 @@ if not BOT_TOKEN:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sends a welcome message when the /start command is issued."""
     await update.message.reply_text(
-        "Welcome to Student Manager Bot!\n\n"
+        f"Welcome {update.effective_user.first_name}!\n\n"
+        "I can help you manage student IDs.\n"
+        "Type /help to see the list of available commands."
+    )
+    await update.message.reply_text(
         "Available commands:\n"
-        "/add - Add new student\n"
+        "/add - Add new student (Number then Name)\n"
         "/list - Show all students\n"
-        "/find - Find student by number or name\n"
-        "/edit - Edit student information (TODO)\n"
-        "/delete - Delete student (TODO)\n"
-        "/cancel - Cancel current operation"
+        "/find <query> - Find student by number or name\n"
+        # "/edit - Edit student information (TODO)\n" # Keep TODOs commented out for help
+        # "/delete - Delete student (TODO)\n"
+        "/cancel - Cancel current operation (like adding)\n"
+        "/help - Show this help message"
     )
 
 
