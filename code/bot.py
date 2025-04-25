@@ -44,6 +44,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "I can help you manage student IDs.\n"
         "Type /help to see the list of available commands."
     )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sends explanation on how to use the bot."""
     await update.message.reply_text(
         "Available commands:\n"
         "/add - Add new student (Number then Name)\n"
