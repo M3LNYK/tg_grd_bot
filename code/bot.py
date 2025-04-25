@@ -280,6 +280,8 @@ def main():
     app.add_handler(CommandHandler("find", find_student))
     app.add_handler(CommandHandler("hello", hello))
 
+    app.add_handler(CallbackQueryHandler(list_button_callback, pattern="^list_sort_"))
+
     # Start the bot (using polling)
     print("Bot is running...")
     app.run_polling()
