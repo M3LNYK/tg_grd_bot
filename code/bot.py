@@ -168,8 +168,9 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    # Add other handlers
+    # Handlers
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(add_conv_handler)
     app.add_handler(CommandHandler("list", list_students))
     app.add_handler(CommandHandler("find", find_student))
