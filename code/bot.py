@@ -338,6 +338,51 @@ async def handle_delete_identifier(
         return WAITING_FOR_DELETE_CONFIRMATION_NUMBER
 
 
+async def handle_delete_confirmation_number(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handles receiving the specific student number after multiple matches were found."""
+    number_to_delete = update.message.text
+    user_id = update.effective_user.id
+    db = context.bot_data["db"]
+    delete_candidates = context.user_data.get("delete_candidates", {})
+
+    if not number_to_delete.isdigit():
+        await update.message.reply_text(
+            "That's not a valid number. Please enter the number of the student to delete."
+        )
+        return WAITING_FOR_DELETE_CONFIRMATION_NUMBER  # Stay in this state
+
+    if number_to_delete not in delete_candidates:
+        await update.message.reply_text(
+            "That number wasn't in the list of matches. Please enter a valid number from the list above, or /cancel."
+        )
+        return WAITING_FOR_DELETE_CONFIRMATION_NUMBER  # Stay in this state
+
+    # Valid number confirmed
+    student_name = delete_candidates.get(
+        number_to_delete, "Unknown"
+    )  # Get name for confirmation message
+
+    if db.delete_student(user_id, number_to_delete):
+        await update.message.reply_text(
+            f"Student deleted successfully:\n"
+            f"Number: {escape_markdown(number_to_delete)}\n"
+            f"Name: {escape_markdown(student_name)}",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+    else:
+        await update.message.reply_text(
+            "Could not delete the student. They might have been deleted already. Operation cancelled."
+        )
+
+    # Clean up temporary data
+    if "delete_candidates" in context.user_data:
+        del context.user_data["delete_candidates"]
+
+    return ConversationHandler.END
+
+
 # --- Main Function ---
 def main():
     # Initialize the database instance
