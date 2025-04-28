@@ -277,6 +277,14 @@ def format_student_list(
     return message_text, reply_markup
 
 
+async def delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the delete conversation."""
+    await update.message.reply_text(
+        "Please enter the number or name of the student you want to delete."
+    )
+    return WAITING_FOR_DELETE_IDENTIFIER
+
+
 # --- Main Function ---
 def main():
     # Initialize the database instance
