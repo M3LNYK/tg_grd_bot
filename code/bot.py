@@ -1,6 +1,7 @@
 import os
 import asyncio  # Import asyncio for proper async execution if needed later
 from dotenv import load_dotenv, dotenv_values
+from telegram.error import BadRequest
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -152,14 +153,23 @@ async def list_button_callback(
     user_id = query.from_user.id
     db = context.bot_data["db"]
 
-    new_sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
+    # Get the *current* sort order before changing it
+    current_sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
+    new_sort_order = current_sort_order  # Initialize with current
 
-    # Determine new sort order based on button pressed
+    # Determine potential new sort order based on button pressed
     if callback_data == "list_sort_student_number":
         new_sort_order = "student_number"
     elif callback_data == "list_sort_student_name":
         new_sort_order = "student_name"
 
+    # --- Check if sort order actually changed ---
+    if new_sort_order == current_sort_order:
+        # If not changed, do nothing (or maybe send a subtle notification)
+        # await query.answer("List is already sorted this way.") # Optional feedback
+        return  # Exit the handler
+
+    # --- If sort order changed, proceed ---
     # Store the new sort order
     context.user_data["list_sort_order"] = new_sort_order
 
@@ -176,10 +186,16 @@ async def list_button_callback(
             reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-    except Exception as e:
+    except BadRequest as e:  # <--- CHANGE THIS LINE
         # Handle potential error if the message content hasn't changed
-        # or if there's another issue editing the message.
-        print(f"Error editing message: {e}")
+        if "Message is not modified" in str(e):
+            print("Message not modified (already sorted).")  # Log less critically
+        else:
+            print(f"Error editing message: {e}")  # Log other BadRequests
+            # Optionally notify the user
+            # await query.message.reply_text("Sorry, couldn't update the list.")
+    except Exception as e:
+        print(f"Unexpected error editing message: {e}")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
