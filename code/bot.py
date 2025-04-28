@@ -45,7 +45,9 @@ DEFAULT_SORT_ORDER = "student_number"
     WAITING_FOR_NAME,
     WAITING_FOR_EDIT_CHOICE,
     WAITING_FOR_EDIT_VALUE,
-) = range(4)
+    WAITING_FOR_DELETE_IDENTIFIER,
+    WAITING_FOR_DELETE_CONFIRMATION_NUMBER,
+) = range(6)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -65,7 +67,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/list - Show all students\n"
         "/find <query> - Find student by number or name\n"
         # "/edit - Edit student information (TODO)\n" # Keep TODOs commented out for help
-        # "/delete - Delete student (TODO)\n"
+        "/delete - Delete student\n"
         "/cancel - Cancel current operation (like adding)\n"
         "/help - Show this help message"
     )
@@ -155,7 +157,7 @@ async def list_button_callback(
 
     # Get the *current* sort order before changing it
     current_sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
-    new_sort_order = current_sort_order  # Initialize with current
+    new_sort_order = current_sort_order
 
     # Determine potential new sort order based on button pressed
     if callback_data == "list_sort_student_number":
@@ -167,7 +169,7 @@ async def list_button_callback(
     if new_sort_order == current_sort_order:
         # If not changed, do nothing (or maybe send a subtle notification)
         # await query.answer("List is already sorted this way.") # Optional feedback
-        return  # Exit the handler
+        return
 
     # --- If sort order changed, proceed ---
     # Store the new sort order
@@ -186,7 +188,7 @@ async def list_button_callback(
             reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-    except BadRequest as e:  # <--- CHANGE THIS LINE
+    except BadRequest as e:
         # Handle potential error if the message content hasn't changed
         if "Message is not modified" in str(e):
             print("Message not modified (already sorted).")  # Log less critically
@@ -199,10 +201,16 @@ async def list_button_callback(
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Clear any temporary data stored in user_data for this conversation
-    if "temp_number" in context.user_data:
-        del context.user_data["temp_number"]
-    # Add logic to clear other potential temp data here if needed
+    """Cancels and ends the conversation."""
+    # Clear any temporary data stored in user_data for any conversation
+    keys_to_clear = [
+        "temp_number",
+        "delete_candidates",
+    ]
+    for key in keys_to_clear:
+        if key in context.user_data:
+            del context.user_data[key]
+
     await update.message.reply_text("Operation cancelled.")
     return ConversationHandler.END
 
@@ -269,6 +277,112 @@ def format_student_list(
     return message_text, reply_markup
 
 
+async def delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the delete conversation."""
+    await update.message.reply_text(
+        "Please enter the number or name of the student you want to delete."
+    )
+    return WAITING_FOR_DELETE_IDENTIFIER
+
+
+async def handle_delete_identifier(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handles receiving the student identifier (name or number) for deletion."""
+    identifier = update.message.text
+    user_id = update.effective_user.id
+    db = context.bot_data["db"]
+
+    # Find potential matches
+    results = db.find_students(user_id, identifier)
+
+    if not results:
+        await update.message.reply_text(
+            f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled.",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return ConversationHandler.END
+
+    elif len(results) == 1:
+        # Exactly one match found
+        student_to_delete = results[0]
+        student_number = student_to_delete["student_number"]
+        student_name = student_to_delete["student_name"]
+
+        if db.delete_student(user_id, student_number):
+            await update.message.reply_text(
+                f"Student deleted successfully:\n"
+                f"Number: {escape_markdown(student_number)}\n"
+                f"Name: {escape_markdown(student_name)}",
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+        else:
+            # Should not happen if find_students found it, but good to handle
+            await update.message.reply_text(
+                "Could not delete the student. They might have been deleted already. Operation cancelled."
+            )
+        return ConversationHandler.END
+
+    else:
+        # Multiple matches found (must be by name)
+        context.user_data["delete_candidates"] = {
+            student["student_number"]: student["student_name"] for student in results
+        }
+        message = "Multiple students found matching that name\. Please reply with the exact student number you want to delete:\n\n"
+        for number, name in context.user_data["delete_candidates"].items():
+            message += (
+                f"Number: `{escape_markdown(number)}`, Name: {escape_markdown(name)}\n"
+            )
+
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN_V2)
+        return WAITING_FOR_DELETE_CONFIRMATION_NUMBER
+
+
+async def handle_delete_confirmation_number(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handles receiving the specific student number after multiple matches were found."""
+    number_to_delete = update.message.text
+    user_id = update.effective_user.id
+    db = context.bot_data["db"]
+    delete_candidates = context.user_data.get("delete_candidates", {})
+
+    if not number_to_delete.isdigit():
+        await update.message.reply_text(
+            "That's not a valid number. Please enter the number of the student to delete."
+        )
+        return WAITING_FOR_DELETE_CONFIRMATION_NUMBER  # Stay in this state
+
+    if number_to_delete not in delete_candidates:
+        await update.message.reply_text(
+            "That number wasn't in the list of matches. Please enter a valid number from the list above, or /cancel."
+        )
+        return WAITING_FOR_DELETE_CONFIRMATION_NUMBER  # Stay in this state
+
+    # Valid number confirmed
+    student_name = delete_candidates.get(
+        number_to_delete, "Unknown"
+    )  # Get name for confirmation message
+
+    if db.delete_student(user_id, number_to_delete):
+        await update.message.reply_text(
+            f"Student deleted successfully:\n"
+            f"Number: {escape_markdown(number_to_delete)}\n"
+            f"Name: {escape_markdown(student_name)}",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+    else:
+        await update.message.reply_text(
+            "Could not delete the student. They might have been deleted already. Operation cancelled."
+        )
+
+    # Clean up temporary data
+    if "delete_candidates" in context.user_data:
+        del context.user_data["delete_candidates"]
+
+    return ConversationHandler.END
+
+
 # --- Main Function ---
 def main():
     # Initialize the database instance
@@ -295,10 +409,30 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    delete_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("delete", delete_start)],
+        states={
+            WAITING_FOR_DELETE_IDENTIFIER: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, handle_delete_identifier
+                )
+            ],
+            WAITING_FOR_DELETE_CONFIRMATION_NUMBER: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, handle_delete_confirmation_number
+                )
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        # Optional: Add conversation timeout
+        # conversation_timeout=300 # e.g., 5 minutes
+    )
+
     # Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(add_conv_handler)
+    app.add_handler(delete_conv_handler)
     app.add_handler(CommandHandler("list", list_students))
     app.add_handler(CommandHandler("find", find_student))
     app.add_handler(CommandHandler("hello", hello))
@@ -309,12 +443,11 @@ def main():
     print("Bot is running...")
     app.run_polling()
 
-    # Optional: Close the database connection when the bot stops
+    # Close the database connection when the bot stops
     db.close()
 
 
 if __name__ == "__main__":
-    # Ensure load_dotenv is called here if you chose not to call it in database.py
     load_dotenv()
 
     # try:

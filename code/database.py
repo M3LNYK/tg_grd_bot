@@ -83,7 +83,40 @@ class Database:
             cur.execute(sql_query, (user_id, query, f"%{query.lower()}%"))
             return cur.fetchall()
 
-    # TODO: Add methods for edit and delete later
+    def delete_student(self, user_id: int, student_number: str) -> bool:
+        """Deletes a specific student for a user by their number.
+        Returns True if a student was deleted, False otherwise."""
+        deleted_count = 0
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM students
+                WHERE user_id = %s AND student_number = %s;
+                """,
+                (user_id, student_number),
+            )
+            deleted_count = cur.rowcount  # Check how many rows were affected
+        self.conn.commit()
+        return deleted_count > 0  # Return True if 1 row was deleted
+
+    def update_student_name(
+        self, user_id: int, student_number: str, new_name: str
+    ) -> bool:
+        """Updates the name of a specific student for a user by their number.
+        Returns True if a student was updated, False otherwise."""
+        updated_count = 0
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE students
+                SET student_name = %s
+                WHERE user_id = %s AND student_number = %s;
+                """,
+                (new_name, user_id, student_number),
+            )
+            updated_count = cur.rowcount  # Check how many rows were affected
+        self.conn.commit()
+        return updated_count > 0
 
     # Optional: Add a close method to close the connection when the bot stops
     def close(self):
