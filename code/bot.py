@@ -1,12 +1,11 @@
 import os
-import asyncio  # Import asyncio for proper async execution if needed later
-from dotenv import load_dotenv, dotenv_values
+from dotenv import load_dotenv
 from telegram.error import BadRequest
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-)  # Add button imports
+)
 from telegram.constants import ParseMode  # Import ParseMode for formatting
 from telegram.ext import (
     ApplicationBuilder,
@@ -301,7 +300,7 @@ async def handle_delete_identifier(
         print(
             f"No results found for identifier: {identifier}. Sending 'not found' message."
         )
-        try:  # Add try-except block for robustness
+        try:
             await update.message.reply_text(
                 f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled."
             )
@@ -325,7 +324,6 @@ async def handle_delete_identifier(
                 parse_mode=ParseMode.MARKDOWN_V2,
             )
         else:
-            # Should not happen if find_students found it, but good to handle
             await update.message.reply_text(
                 "Could not delete the student. They might have been deleted already. Operation cancelled."
             )
@@ -460,9 +458,4 @@ def main():
 
 if __name__ == "__main__":
     load_dotenv()
-
-    # try:
-    #     asyncio.run(main())
-    # except KeyboardInterrupt: # Handle Ctrl+C gracefully
-    #     print("Bot stopped manually.")
     main()
