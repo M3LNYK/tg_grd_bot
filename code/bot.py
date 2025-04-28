@@ -45,7 +45,9 @@ DEFAULT_SORT_ORDER = "student_number"
     WAITING_FOR_NAME,
     WAITING_FOR_EDIT_CHOICE,
     WAITING_FOR_EDIT_VALUE,
-) = range(4)
+    WAITING_FOR_DELETE_IDENTIFIER,
+    WAITING_FOR_DELETE_CONFIRMATION_NUMBER,
+) = range(6)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
