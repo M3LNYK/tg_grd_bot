@@ -292,19 +292,28 @@ async def handle_delete_identifier(
     identifier = update.message.text
     user_id = update.effective_user.id
     db = context.bot_data["db"]
+    print(f"Attempting to delete identifier: {identifier} for user: {user_id}")
 
     # Find potential matches
     results = db.find_students(user_id, identifier)
 
     if not results:
-        await update.message.reply_text(
-            f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled.",
-            parse_mode=ParseMode.MARKDOWN_V2,
+        print(
+            f"No results found for identifier: {identifier}. Sending 'not found' message."
         )
+        try:  # Add try-except block for robustness
+            await update.message.reply_text(
+                f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled.",
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+        except Exception as e:
+            print(
+                f"Error sending 'not found' reply: {e}"
+            )  # Log potential error during send
         return ConversationHandler.END
 
     elif len(results) == 1:
-        # Exactly one match found
+        print(f"Found one result for identifier: {identifier}. Deleting.")
         student_to_delete = results[0]
         student_number = student_to_delete["student_number"]
         student_name = student_to_delete["student_name"]
@@ -325,6 +334,9 @@ async def handle_delete_identifier(
 
     else:
         # Multiple matches found (must be by name)
+        print(
+            f"Found multiple results for identifier: {identifier}. Asking for clarification."
+        )
         context.user_data["delete_candidates"] = {
             student["student_number"]: student["student_name"] for student in results
         }
