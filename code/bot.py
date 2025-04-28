@@ -201,10 +201,16 @@ async def list_button_callback(
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # Clear any temporary data stored in user_data for this conversation
-    if "temp_number" in context.user_data:
-        del context.user_data["temp_number"]
-    # Add logic to clear other potential temp data here if needed
+    """Cancels and ends the conversation."""
+    # Clear any temporary data stored in user_data for any conversation
+    keys_to_clear = [
+        "temp_number",
+        "delete_candidates",
+    ]
+    for key in keys_to_clear:
+        if key in context.user_data:
+            del context.user_data[key]
+
     await update.message.reply_text("Operation cancelled.")
     return ConversationHandler.END
 
