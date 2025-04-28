@@ -157,7 +157,7 @@ async def list_button_callback(
 
     # Get the *current* sort order before changing it
     current_sort_order = context.user_data.get("list_sort_order", DEFAULT_SORT_ORDER)
-    new_sort_order = current_sort_order  # Initialize with current
+    new_sort_order = current_sort_order
 
     # Determine potential new sort order based on button pressed
     if callback_data == "list_sort_student_number":
@@ -169,7 +169,7 @@ async def list_button_callback(
     if new_sort_order == current_sort_order:
         # If not changed, do nothing (or maybe send a subtle notification)
         # await query.answer("List is already sorted this way.") # Optional feedback
-        return  # Exit the handler
+        return
 
     # --- If sort order changed, proceed ---
     # Store the new sort order
@@ -188,7 +188,7 @@ async def list_button_callback(
             reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-    except BadRequest as e:  # <--- CHANGE THIS LINE
+    except BadRequest as e:
         # Handle potential error if the message content hasn't changed
         if "Message is not modified" in str(e):
             print("Message not modified (already sorted).")  # Log less critically
@@ -311,12 +311,11 @@ def main():
     print("Bot is running...")
     app.run_polling()
 
-    # Optional: Close the database connection when the bot stops
+    # Close the database connection when the bot stops
     db.close()
 
 
 if __name__ == "__main__":
-    # Ensure load_dotenv is called here if you chose not to call it in database.py
     load_dotenv()
 
     # try:
