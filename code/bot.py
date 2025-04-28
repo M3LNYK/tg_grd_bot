@@ -67,7 +67,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/list - Show all students\n"
         "/find <query> - Find student by number or name\n"
         # "/edit - Edit student information (TODO)\n" # Keep TODOs commented out for help
-        # "/delete - Delete student (TODO)\n"
+        "/delete - Delete student\n"
         "/cancel - Cancel current operation (like adding)\n"
         "/help - Show this help message"
     )
