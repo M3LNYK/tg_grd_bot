@@ -285,6 +285,59 @@ async def delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return WAITING_FOR_DELETE_IDENTIFIER
 
 
+async def handle_delete_identifier(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handles receiving the student identifier (name or number) for deletion."""
+    identifier = update.message.text
+    user_id = update.effective_user.id
+    db = context.bot_data["db"]
+
+    # Find potential matches
+    results = db.find_students(user_id, identifier)
+
+    if not results:
+        await update.message.reply_text(
+            f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled.",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return ConversationHandler.END
+
+    elif len(results) == 1:
+        # Exactly one match found
+        student_to_delete = results[0]
+        student_number = student_to_delete["student_number"]
+        student_name = student_to_delete["student_name"]
+
+        if db.delete_student(user_id, student_number):
+            await update.message.reply_text(
+                f"Student deleted successfully:\n"
+                f"Number: {escape_markdown(student_number)}\n"
+                f"Name: {escape_markdown(student_name)}",
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+        else:
+            # Should not happen if find_students found it, but good to handle
+            await update.message.reply_text(
+                "Could not delete the student. They might have been deleted already. Operation cancelled."
+            )
+        return ConversationHandler.END
+
+    else:
+        # Multiple matches found (must be by name)
+        context.user_data["delete_candidates"] = {
+            student["student_number"]: student["student_name"] for student in results
+        }
+        message = "Multiple students found matching that name\. Please reply with the exact student number you want to delete:\n\n"
+        for number, name in context.user_data["delete_candidates"].items():
+            message += (
+                f"Number: `{escape_markdown(number)}`, Name: {escape_markdown(name)}\n"
+            )
+
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN_V2)
+        return WAITING_FOR_DELETE_CONFIRMATION_NUMBER
+
+
 # --- Main Function ---
 def main():
     # Initialize the database instance
