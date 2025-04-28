@@ -209,24 +209,30 @@ def format_student_list(
 ) -> tuple[str, InlineKeyboardMarkup]:
     """Formats the student list as a Markdown table and creates sorting buttons."""
     if not students:
-        return "No students in the database.", None
+        # Escape the message in case it contains special characters
+        return escape_markdown("No students in the database."), None
 
     # --- Create Table Header ---
-    # Using fixed-width approach with monospace font
     header = f"`{'#':<4}{'ID':<15}{'Name':<20}`\n"  # Adjust widths as needed
     separator = f"`{'-' * 4}{'-' * 15}{'-' * 20}`\n"  # Separator line
 
     # --- Create Table Rows ---
     rows = []
     for i, student in enumerate(students, 1):
-        num_str = escape_markdown(str(i))
+        # Escape each part *before* formatting
+        num_str = escape_markdown(i)
         id_str = escape_markdown(student["student_number"])
         name_str = escape_markdown(student["student_name"])
-        # Truncate long names/IDs if necessary
+        id_str = id_str[:15]
+        name_str = name_str[:20]
         rows.append(f"`{num_str:<4}{id_str:<15}{name_str:<20}`")
 
-    message_text = f"*Students List* \(Sorted by {sort_order.replace('_', ' ')}\)\n\n"
-    message_text += header + separator + "\n".join(rows)
+    # --- Create Title ---
+    # Escape the sort_order part before including it in the f-string
+    escaped_sort_order = escape_markdown(sort_order.replace("_", " "))
+    title = "*Students List* \\(Sorted by " + escaped_sort_order + "\\)\n\n"
+
+    message_text = title + header + separator + "\n".join(rows)
 
     # --- Create Inline Keyboard for Sorting ---
     keyboard = [
