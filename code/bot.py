@@ -303,8 +303,7 @@ async def handle_delete_identifier(
         )
         try:  # Add try-except block for robustness
             await update.message.reply_text(
-                f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled.",
-                parse_mode=ParseMode.MARKDOWN_V2,
+                f"No student found matching '{escape_markdown(identifier)}'. Operation cancelled."
             )
         except Exception as e:
             print(
