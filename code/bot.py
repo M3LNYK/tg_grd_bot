@@ -303,10 +303,30 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    delete_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("delete", delete_start)],
+        states={
+            WAITING_FOR_DELETE_IDENTIFIER: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, handle_delete_identifier
+                )
+            ],
+            WAITING_FOR_DELETE_CONFIRMATION_NUMBER: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, handle_delete_confirmation_number
+                )
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        # Optional: Add conversation timeout
+        # conversation_timeout=300 # e.g., 5 minutes
+    )
+
     # Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(add_conv_handler)
+    app.add_handler(delete_conv_handler)
     app.add_handler(CommandHandler("list", list_students))
     app.add_handler(CommandHandler("find", find_student))
     app.add_handler(CommandHandler("hello", hello))
